@@ -1,0 +1,21 @@
+services:
+  app:
+    build: .
+    environment:
+      DATABASE_URL: postgres://service:service@postgres:5432/bulletins?sslmode=disable
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: bulletins
+      POSTGRES_USER: service
+      POSTGRES_PASSWORD: service
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U service -d bulletins"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
