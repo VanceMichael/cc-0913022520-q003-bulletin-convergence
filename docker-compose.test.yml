@@ -1,0 +1,21 @@
+# 集成测试编排：叠加在 docker-compose.yml 之上。
+#   docker compose -f docker-compose.yml -f docker-compose.test.yml up --build --exit-code-from tester --abort-on-container-exit tester
+# tester 挂载 docker.sock，用 `docker restart bulletins-app` 制造真实的进程重启。
+services:
+  tester:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    container_name: bulletins-tester
+    environment:
+      APP_BASE_URL: http://app:8080
+      SIM_BASE_URL: http://subscriber-sim:9000
+      APP_CONTAINER: bulletins-app
+      SUBSCRIBERS_UNDER_TEST: airport:PEK,airline:CA,ground:SWP
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      app:
+        condition: service_healthy
+      subscriber-sim:
+        condition: service_healthy

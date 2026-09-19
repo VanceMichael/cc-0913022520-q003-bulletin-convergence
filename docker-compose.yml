@@ -1,15 +1,8 @@
+# 收敛中心运行环境：postgres + app（API + 投递器）+ subscriber-sim（模拟订阅方）。
+# 时间参数面向演示/集成测试调小；生产应放大租约与退避层级。
 services:
-  app:
-    build: .
-    environment:
-      DATABASE_URL: postgres://service:service@postgres:5432/bulletins?sslmode=disable
-    ports:
-      - "8080:8080"
-    depends_on:
-      postgres:
-        condition: service_healthy
   postgres:
-    image: postgres:17
+    image: postgres:17-alpine
     environment:
       POSTGRES_DB: bulletins
       POSTGRES_USER: service
@@ -19,3 +12,57 @@ services:
       interval: 5s
       timeout: 3s
       retries: 12
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  app:
+    build: .
+    image: bulletins-app:latest
+    container_name: bulletins-app
+    environment:
+      HTTP_ADDR: ":8080"
+      DATABASE_URL: postgres://service:service@postgres:5432/bulletins?sslmode=disable
+      DISPATCHER_ENABLED: "true"
+      DISPATCHER_TICK: 200ms
+      DISPATCHER_BATCH_SIZE: "50"
+      DISPATCHER_LEASE_TTL: 10s
+      RETRY_TIER_DELAYS: 200ms,500ms,1s
+      DELIVERY_MAX_ATTEMPTS: "5"
+      DELIVERY_HTTP_TIMEOUT: 5s
+      SHUTDOWN_TIMEOUT: 2s
+      SUBSCRIBERS: "airport:PEK=http://subscriber-sim:9000/hook/airport:PEK;airline:CA=http://subscriber-sim:9000/hook/airline:CA;ground:SWP=http://subscriber-sim:9000/hook/ground:SWP"
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthz >/dev/null 2>&1 || exit 1"]
+      interval: 3s
+      timeout: 2s
+      retries: 20
+      start_period: 5s
+
+  subscriber-sim:
+    build: .
+    image: bulletins-app:latest
+    container_name: subscriber-sim
+    command: ["/usr/local/bin/subscriber-sim"]
+    environment:
+      HTTP_ADDR: ":9000"
+      APP_BASE_URL: http://app:8080
+      SIM_SLOW_DELAY: 4s
+    ports:
+      - "9000:9000"
+    depends_on:
+      app:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9000/healthz >/dev/null 2>&1 || exit 1"]
+      interval: 3s
+      timeout: 2s
+      retries: 20
+      start_period: 5s
+
+volumes:
+  pgdata:

@@ -1,0 +1,11 @@
+# 集成测试运行器：在 compose 网络内对 app + subscriber-sim 执行黑盒测试。
+# 附带 docker CLI，用于在“投递器中断”用例中重启 app 容器。
+FROM golang:1.24-bookworm
+COPY --from=docker:27-cli /usr/local/bin/docker /usr/local/bin/docker
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN GOPROXY=https://goproxy.cn,https://proxy.golang.org,direct go mod download
+COPY . .
+# 构建期编译一次，预热测试编译缓存。
+RUN go build ./... && go vet -tags=integration ./tests/integration/...
+CMD ["go", "test", "-tags=integration", "-count=1", "-timeout=8m", "-v", "./tests/integration/..."]
