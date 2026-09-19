@@ -3,19 +3,37 @@ services:
     build: .
     environment:
       DATABASE_URL: postgres://service:service@postgres:5432/bulletins?sslmode=disable
+      PORT: "8080"
+      # 投递器参数（默认值见 internal/dispatcher；此处显式声明便于调参）。
+      DISPATCH_POLL_INTERVAL: 500ms
+      DISPATCH_LEASE_DURATION: 30s
+      DISPATCH_HTTP_TIMEOUT: 10s
+      DISPATCH_BATCH_SIZE: "50"
+      DISPATCH_CONCURRENCY: "8"
+      METRICS_INTERVAL: 5s
     ports:
       - "8080:8080"
     depends_on:
       postgres:
         condition: service_healthy
+    restart: unless-stopped
+    # 就绪/存活探针直接打应用的 /health（内含数据库 ping，db 不可用时返回 503）：
+    #   curl -f http://localhost:8080/health
+    # 精简运行镜像不自带 shell 探测工具，故不在镜像内声明 HEALTHCHECK。
+
   postgres:
     image: postgres:17
     environment:
       POSTGRES_DB: bulletins
       POSTGRES_USER: service
       POSTGRES_PASSWORD: service
+    volumes:
+      - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U service -d bulletins"]
       interval: 5s
       timeout: 3s
       retries: 12
+
+volumes:
+  pgdata:
